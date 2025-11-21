@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+#root {
+  max-width: none;
+  padding: 0;
+  width: 100%;
+}
+
+.ant-layout {
+  background: transparent;
+}
+
+.ant-layout-header {
+  background: #ffffff !important;
+  color: #1e293b !important;
+}
+
+.ant-layout-sider {
+  background: #ffffff !important;
+}
+
+.ant-menu-light {
+  background: transparent !important;
+}
+
+.ant-menu-light .ant-menu-item-selected {
+  background-color: #eff6ff !important;
+  color: #2563eb !important;
+}
