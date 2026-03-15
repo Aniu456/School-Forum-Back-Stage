@@ -1,183 +1,121 @@
 import { ArrowRightOutlined, WarningOutlined } from '@ant-design/icons'
-import { Card, List, Space, Table, Tag, Typography } from 'antd'
-import type { ColumnsType } from 'antd/es/table'
+import { Card, List, Spin, Typography, App } from 'antd'
 import * as echarts from 'echarts'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import StatCard from '../components/StatCard'
-import type { Announcement, Comment, Post, User } from '../types'
+import type { SystemStatistics } from '../types'
+import { statisticsService } from '../services'
 
-interface OverviewPageProps {
-  users: User[]
-  posts: Post[]
-  comments: Comment[]
-  announcements: Announcement[]
-}
+const OverviewPage: React.FC = () => {
+  const { message } = App.useApp()
+  const [loading, setLoading] = useState(true)
+  const [statistics, setStatistics] = useState<SystemStatistics | null>(null)
 
-const OverviewPage: React.FC<OverviewPageProps> = ({ users, posts, comments, announcements }) => {
-  const totalUsers = users.length
-  const bannedUsers = users.filter((u) => u.status === 'banned').length
-  const pinnedPosts = posts.filter((p) => p.status === 'pinned').length
-  const hiddenPosts = posts.filter((p) => p.status === 'hidden').length
-  const removedComments = comments.filter((c) => c.status === 'removed').length
-  const hiddenAnnouncements = announcements.filter((a) => a.hidden).length
-  const totalViews = posts.reduce((sum, p) => sum + p.views, 0)
+  useEffect(() => {
+    fetchStatistics()
+  }, [])
 
-  const topPosts = [...posts]
-    .sort((a, b) => b.heat - a.heat)
-    .slice(0, 4)
-    .map((post) => ({
-      key: post.id,
-      title: post.title,
-      author: post.author,
-      views: post.views,
-      comments: post.comments,
-      status: post.status,
-      tags: post.tags,
-    }))
+  const fetchStatistics = async () => {
+    try {
+      setLoading(true)
+      const data = await statisticsService.getStatistics()
+      setStatistics(data)
+    } catch (error: any) {
+      message.error(error.response?.data?.message || '获取统计数据失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading || !statistics) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Spin size="large" />
+      </div>
+    )
+  }
 
   const backlog = [
-    { title: '待处理封禁/解封', value: bannedUsers, tag: '用户' },
-    { title: '隐藏帖子核查', value: hiddenPosts, tag: '帖子' },
-    { title: '已删除评论复核', value: removedComments, tag: '评论' },
-    { title: '隐藏公告', value: hiddenAnnouncements, tag: '公告' },
-  ]
-
-  const postColumns: ColumnsType<(typeof topPosts)[number]> = [
-    {
-      title: '帖子',
-      dataIndex: 'title',
-      render: (_, record) => (
-        <div>
-          <div className="font-semibold text-slate-900">{record.title}</div>
-          <div className="text-sm text-slate-500">{record.author}</div>
-        </div>
-      ),
-    },
-    {
-      title: '标签',
-      dataIndex: 'tags',
-      render: (tags: string[]) => (
-        <Space wrap>
-          {tags.map((tag) => (
-            <Tag key={tag}>{tag}</Tag>
-          ))}
-        </Space>
-      ),
-    },
-    {
-      title: '浏览',
-      dataIndex: 'views',
-      sorter: (a, b) => a.views - b.views,
-    },
-    {
-      title: '评论',
-      dataIndex: 'comments',
-      sorter: (a, b) => a.comments - b.comments,
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      render: (status: string) => {
-        const color =
-          status === 'pinned' ? 'gold' : status === 'hidden' ? 'red' : 'blue'
-        const label =
-          status === 'pinned' ? '置顶' : status === 'hidden' ? '隐藏' : '正常'
-        return (
-          <Tag color={color} bordered={false}>
-            {label}
-          </Tag>
-        )
-      },
-    },
+    { title: '待处理封禁/解封', value: statistics.users.banned, tag: '用户' },
+    { title: '正常用户', value: statistics.users.active, tag: '用户' },
+    { title: '帖子总数', value: statistics.posts.total, tag: '帖子' },
+    { title: '评论总数', value: statistics.comments.total, tag: '评论' },
   ]
 
   return (
     <div className="space-y-4">
       <div>
-        <Typography.Title level={3} className="!mb-1 !mt-0 text-slate-900">
+        <Typography.Title level={3} className="mb-1! mt-0! text-slate-900">
           数据总览
         </Typography.Title>
-        <Typography.Paragraph className="!mb-0 text-slate-600">
+        <Typography.Paragraph className="mb-0! text-slate-600">
           按设计文档梳理后台管理端关键指标，方便快速处理封禁、置顶、隐藏与公告维护。
         </Typography.Paragraph>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="注册用户" value={totalUsers} delta="+12 本周" color="#2563eb" />
+        <StatCard
+          title="注册用户"
+          value={statistics.users.total}
+          delta={`活跃 ${statistics.users.active}`}
+          color="#2563eb"
+        />
         <StatCard
           title="封禁用户"
-          value={bannedUsers}
+          value={statistics.users.banned}
           color="#ef4444"
           footer="封禁即时生效，解封后恢复全部浏览与发帖权限。"
         />
         <StatCard
-          title="帖子总浏览"
-          value={totalViews.toLocaleString()}
-          delta="较上周 +8%"
+          title="帖子总数"
+          value={statistics.posts.total}
+          delta="全部帖子"
           color="#0ea5e9"
           footer="含置顶、隐藏帖子，实时汇总。"
         />
         <StatCard
-          title="公告数量"
-          value={announcements.length}
+          title="评论总数"
+          value={statistics.comments.total}
           color="#10b981"
-          footer={`隐藏公告 ${hiddenAnnouncements} 条，草稿 ${announcements.filter((a) => a.status === 'draft').length} 条`}
+          footer="全部评论数据"
         />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="border-0 shadow-soft rounded-2xl">
-          <Typography.Title level={4} className="!mb-4">
+          <Typography.Title level={4} className="mb-4!">
             浏览趋势
           </Typography.Title>
-          <TrendChart posts={posts} />
+          <TrendChart />
         </Card>
         <Card className="border-0 shadow-soft rounded-2xl">
-          <Typography.Title level={4} className="!mb-4">
-            帖子分类占比
+          <Typography.Title level={4} className="mb-4!">
+            用户分布
           </Typography.Title>
-          <CategoryPieChart posts={posts} />
+          <UserDistributionChart statistics={statistics} />
         </Card>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="border-0 shadow-soft rounded-2xl lg:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <Typography.Title level={4} className="!mb-0">
-              热门帖子（按互动热度）
-            </Typography.Title>
-            <Tag color="blue" bordered={false}>
-              置顶 {pinnedPosts} | 隐藏 {hiddenPosts}
-            </Tag>
-          </div>
-          <Table
-            columns={postColumns}
-            dataSource={topPosts}
-            pagination={false}
-            bordered={false}
-            size="middle"
-          />
-        </Card>
-
+      <div className="grid gap-4 lg:grid-cols-1">
         <Card className="border-0 shadow-soft rounded-2xl">
           <div className="flex items-center gap-2 mb-4">
             <WarningOutlined className="text-orange-500" />
-            <Typography.Title level={5} className="!mb-0">
-              待处理清单
+            <Typography.Title level={5} className="mb-0!">
+              系统统计
             </Typography.Title>
           </div>
           <List
             dataSource={backlog}
             renderItem={(item) => (
-              <List.Item className="!border-none px-0">
+              <List.Item className="border-none! px-0">
                 <div className="flex items-center justify-between w-full">
                   <div>
                     <div className="font-semibold text-slate-900">{item.title}</div>
                     <div className="text-sm text-slate-500 uppercase">{item.tag}</div>
                   </div>
-                  <Tag color="blue" bordered={false} className="text-base px-3 py-1 rounded-full">
+                  <div className="text-2xl font-bold text-blue-600">
                     {item.value}
-                  </Tag>
+                  </div>
                 </div>
               </List.Item>
             )}
@@ -192,7 +130,7 @@ const OverviewPage: React.FC<OverviewPageProps> = ({ users, posts, comments, ann
 }
 
 // 浏览趋势折线图组件
-const TrendChart: React.FC<{ posts: Post[] }> = ({ posts }) => {
+const TrendChart: React.FC = () => {
   const chartRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -289,13 +227,13 @@ const TrendChart: React.FC<{ posts: Post[] }> = ({ posts }) => {
       window.removeEventListener('resize', handleResize)
       chart.dispose()
     }
-  }, [posts])
+  }, [])
 
   return <div ref={chartRef} style={{ width: '100%', height: '300px' }} />
 }
 
-// 帖子分类占比饼图组件
-const CategoryPieChart: React.FC<{ posts: Post[] }> = ({ posts }) => {
+// 用户分布饼图组件
+const UserDistributionChart: React.FC<{ statistics: SystemStatistics }> = ({ statistics }) => {
   const chartRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -303,13 +241,10 @@ const CategoryPieChart: React.FC<{ posts: Post[] }> = ({ posts }) => {
 
     const chart = echarts.init(chartRef.current)
 
-    // 统计各分类帖子数量
-    const categoryMap: Record<string, number> = {}
-    posts.forEach((post) => {
-      categoryMap[post.category] = (categoryMap[post.category] || 0) + 1
-    })
-
-    const data = Object.entries(categoryMap).map(([name, value]) => ({ name, value }))
+    const data = [
+      { name: '活跃用户', value: statistics.users.active },
+      { name: '封禁用户', value: statistics.users.banned },
+    ]
 
     const option = {
       tooltip: {
@@ -346,7 +281,7 @@ const CategoryPieChart: React.FC<{ posts: Post[] }> = ({ posts }) => {
             },
           },
           data,
-          color: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'],
+          color: ['#10b981', '#ef4444'],
         },
       ],
     }
@@ -360,7 +295,7 @@ const CategoryPieChart: React.FC<{ posts: Post[] }> = ({ posts }) => {
       window.removeEventListener('resize', handleResize)
       chart.dispose()
     }
-  }, [posts])
+  }, [statistics])
 
   return <div ref={chartRef} style={{ width: '100%', height: '300px' }} />
 }

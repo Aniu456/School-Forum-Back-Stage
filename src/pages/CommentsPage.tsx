@@ -1,91 +1,154 @@
-import { DeleteOutlined, EyeOutlined } from '@ant-design/icons'
+import { DeleteOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import {
+  Avatar,
   Button,
   Drawer,
   Input,
   Modal,
-  Select,
   Space,
   Table,
   Tag,
   Typography,
-  message,
+  App,
+  Spin,
 } from 'antd'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Comment } from '../types'
+import { commentService } from '../services'
 
-interface CommentsPageProps {
-  comments: Comment[]
-  onDelete: (ids: string[]) => void
-}
+const CommentsPage: React.FC = () => {
+  const { message } = App.useApp()
 
-const { Option } = Select
-
-const CommentsPage: React.FC<CommentsPageProps> = ({ comments, onDelete }) => {
+  const [loading, setLoading] = useState(false)
+  const [comments, setComments] = useState<Comment[]>([])
   const [keyword, setKeyword] = useState('')
-  const [status, setStatus] = useState<'all' | Comment['status']>('all')
   const [detail, setDetail] = useState<Comment | null>(null)
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [total, setTotal] = useState(0)
 
-  const filtered = useMemo(
-    () =>
-      comments.filter((comment) => {
-        const matchKeyword =
-          comment.content.toLowerCase().includes(keyword.toLowerCase()) ||
-          comment.author.toLowerCase().includes(keyword.toLowerCase()) ||
-          comment.postTitle.toLowerCase().includes(keyword.toLowerCase())
-        const matchStatus = status === 'all' ? true : comment.status === status
-        return matchKeyword && matchStatus
-      }),
-    [comments, keyword, status],
-  )
+  useEffect(() => {
+    fetchComments()
+  }, [page, pageSize])
 
-  const handleDelete = (ids: string[]) => {
-    if (!ids.length) return
+  const fetchComments = async () => {
+    try {
+      setLoading(true)
+      const response = await commentService.getComments({
+        page,
+        limit: pageSize,
+        keyword: keyword || undefined,
+      })
+      setComments(response.data)
+      setTotal(response.meta.total)
+    } catch (error: any) {
+      message.error(error.response?.data?.message || '获取评论列表失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSearch = () => {
+    setPage(1)
+    fetchComments()
+  }
+
+  const handleDelete = (commentId: string) => {
     Modal.confirm({
-      title: `确认删除选中的 ${ids.length} 条评论？`,
-      content: '删除后不会再出现在前台任何位置。',
+      title: '确认删除该评论？',
+      content: '删除后将从数据库物理删除，此操作不可恢复。',
       okButtonProps: { danger: true },
-      onOk: () => {
-        onDelete(ids)
-        setSelectedRowKeys([])
-        message.success('评论已删除')
+      onOk: async () => {
+        try {
+          await commentService.deleteComment(commentId)
+          message.success('评论已删除')
+          fetchComments()
+        } catch (error: any) {
+          message.error(error.response?.data?.message || '删除失败')
+        }
       },
     })
   }
+
+  const handleBulkDelete = () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要删除的评论')
+      return
+    }
+
+    Modal.confirm({
+      title: `确认删除选中的 ${selectedRowKeys.length} 条评论？`,
+      content: '批量删除后将从数据库物理删除，此操作不可恢复。',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await commentService.bulkDelete(selectedRowKeys)
+          message.success(`已删除 ${selectedRowKeys.length} 条评论`)
+          setSelectedRowKeys([])
+          fetchComments()
+        } catch (error: any) {
+          message.error(error.response?.data?.message || '批量删除失败')
+        }
+      },
+    })
+  }
+
+  const filtered = useMemo(() => {
+    if (!keyword) return comments
+    return comments.filter((comment) => {
+      const lowerKeyword = keyword.toLowerCase()
+      return (
+        comment.content.toLowerCase().includes(lowerKeyword) ||
+        comment.author.username.toLowerCase().includes(lowerKeyword) ||
+        comment.author.nickname.toLowerCase().includes(lowerKeyword) ||
+        (comment.postTitle && comment.postTitle.toLowerCase().includes(lowerKeyword))
+      )
+    })
+  }, [keyword, comments])
 
   const columns: ColumnsType<Comment> = [
     {
       title: '评论内容',
       dataIndex: 'content',
-      render: (_, record) => (
+      width: 400,
+      render: (content: string, record) => (
         <div>
-          <div className="font-semibold text-slate-900">{record.content}</div>
-          <div className="text-xs text-slate-500 mt-1">发表于 {record.createdAt}</div>
+          <div className="text-slate-900">{content}</div>
+          <div className="text-xs text-slate-500 mt-1">
+            发表于 {new Date(record.createdAt).toLocaleString('zh-CN')}
+          </div>
         </div>
       ),
     },
     {
       title: '作者',
       dataIndex: 'author',
+      render: (author: Comment['author']) => (
+        <Space align="center">
+          <Avatar size={32} src={author.avatar} />
+          <div>
+            <div className="font-medium text-slate-900">{author.nickname || author.username}</div>
+            <div className="text-xs text-slate-500">@{author.username}</div>
+          </div>
+        </Space>
+      ),
     },
     {
       title: '所属帖子',
       dataIndex: 'postTitle',
-      render: (title: string) => <span className="text-blue-700">{title}</span>,
+      render: (title?: string) => (
+        <span className="text-blue-700">{title || '未知帖子'}</span>
+      ),
     },
     {
       title: '点赞',
-      dataIndex: 'likes',
-      sorter: (a, b) => a.likes - b.likes,
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      render: (state: Comment['status']) => (
-        <Tag color={state === 'removed' ? 'red' : 'green'} bordered={false}>
-          {state === 'removed' ? '已删除' : '正常'}
+      dataIndex: 'likeCount',
+      sorter: (a, b) => a.likeCount - b.likeCount,
+      render: (count: number) => (
+        <Tag color="blue" bordered={false}>
+          {count}
         </Tag>
       ),
     },
@@ -102,7 +165,7 @@ const CommentsPage: React.FC<CommentsPageProps> = ({ comments, onDelete }) => {
             type="link"
             danger
             icon={<DeleteOutlined />}
-            onClick={() => handleDelete([record.id])}
+            onClick={() => handleDelete(record.id)}
           >
             删除
           </Button>
@@ -115,65 +178,98 @@ const CommentsPage: React.FC<CommentsPageProps> = ({ comments, onDelete }) => {
     <div className="space-y-4">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
-          <Typography.Title level={3} className="!mb-1 text-slate-900">
+          <Typography.Title level={3} className="mb-1! text-slate-900">
             评论管理
           </Typography.Title>
-          <Typography.Paragraph className="!mb-0 text-slate-600">
+          <Typography.Paragraph className="mb-0! text-slate-600">
             支持按帖子、作者筛选，单条或批量删除（物理删除）。
           </Typography.Paragraph>
         </div>
         <Space>
-          <Input.Search
-            allowClear
-            placeholder="搜索内容 / 作者 / 帖子"
-            onSearch={setKeyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            className="min-w-[260px]"
-          />
-          <Select value={status} onChange={(v) => setStatus(v)} style={{ width: 140 }}>
-            <Option value="all">全部状态</Option>
-            <Option value="visible">正常</Option>
-            <Option value="removed">已删除</Option>
-          </Select>
+          <Button icon={<ReloadOutlined />} onClick={fetchComments}>
+            刷新
+          </Button>
+          {selectedRowKeys.length > 0 && (
+            <Button danger icon={<DeleteOutlined />} onClick={handleBulkDelete}>
+              批量删除 ({selectedRowKeys.length})
+            </Button>
+          )}
         </Space>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="text-slate-500 text-sm">
-          已选择 {selectedRowKeys.length} 条，可批量删除。
-        </div>
-        <Button danger type="primary" onClick={() => handleDelete(selectedRowKeys as string[])}>
-          批量删除
-        </Button>
+      <div className="flex gap-3">
+        <Input.Search
+          allowClear
+          placeholder="搜索内容 / 作者 / 帖子"
+          value={keyword}
+          onSearch={handleSearch}
+          onChange={(e) => setKeyword(e.target.value)}
+          className="flex-1"
+        />
       </div>
 
-      <Table
-        rowKey="id"
-        columns={columns}
-        dataSource={filtered}
-        pagination={{ pageSize: 6 }}
-        className="bg-white/80 rounded-2xl shadow-soft"
-        rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
-      />
+      <Spin spinning={loading}>
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={filtered}
+          bordered={false}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys as string[]),
+          }}
+          pagination={{
+            current: page,
+            pageSize: pageSize,
+            total: keyword ? filtered.length : total,
+            showSizeChanger: true,
+            showTotal: (total) => `共 ${total} 条`,
+            onChange: (page, pageSize) => {
+              setPage(page)
+              setPageSize(pageSize)
+            },
+          }}
+          className="bg-white/80 rounded-2xl shadow-soft"
+        />
+      </Spin>
 
       <Drawer
         open={!!detail}
-        width={480}
+        width={520}
         title="评论详情"
         onClose={() => setDetail(null)}
       >
         {detail && (
-          <Space direction="vertical" size={12} className="text-slate-700">
-            <div className="font-semibold text-slate-900">{detail.content}</div>
-            <div>作者：{detail.author}</div>
-            <div>帖子：{detail.postTitle}</div>
-            <div>时间：{detail.createdAt}</div>
-            <div>点赞：{detail.likes}</div>
+          <Space direction="vertical" size={16} className="w-full">
             <div>
-              状态：
-              <Tag color={detail.status === 'removed' ? 'red' : 'green'} bordered={false}>
-                {detail.status === 'removed' ? '已删除' : '正常'}
-              </Tag>
+              <div className="text-sm text-slate-500 mb-1">评论内容</div>
+              <div className="text-slate-900">{detail.content}</div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500 mb-1">作者</div>
+              <Space align="center">
+                <Avatar src={detail.author.avatar} />
+                <div>
+                  <div className="font-medium">{detail.author.nickname || detail.author.username}</div>
+                  <div className="text-xs text-slate-500">@{detail.author.username}</div>
+                </div>
+              </Space>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500 mb-1">所属帖子</div>
+              <div className="text-blue-700">{detail.postTitle || '未知帖子'}</div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500 mb-1">发表时间</div>
+              <div>{new Date(detail.createdAt).toLocaleString('zh-CN')}</div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500 mb-1">点赞数</div>
+              <Tag color="blue" bordered={false}>{detail.likeCount}</Tag>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500 mb-1">评论ID</div>
+              <div className="text-xs font-mono text-slate-600">{detail.id}</div>
             </div>
           </Space>
         )}

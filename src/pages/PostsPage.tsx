@@ -2,11 +2,15 @@ import {
   DeleteOutlined,
   EyeOutlined,
   HighlightOutlined,
+  LockOutlined,
   PushpinOutlined,
   StopOutlined,
+  UnlockOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import {
+  Avatar,
   Button,
   Drawer,
   Input,
@@ -16,141 +20,275 @@ import {
   Table,
   Tag,
   Typography,
-  message,
+  App,
+  Spin,
 } from 'antd'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Post } from '../types'
-
-interface PostsPageProps {
-  posts: Post[]
-  onTogglePin: (postId: string) => void
-  onToggleHidden: (postId: string) => void
-  onDelete: (postId: string) => void
-}
+import { postService } from '../services'
 
 const { Option } = Select
 
-const PostsPage: React.FC<PostsPageProps> = ({
-  posts,
-  onTogglePin,
-  onToggleHidden,
-  onDelete,
-}) => {
-  const [keyword, setKeyword] = useState('')
-  const [status, setStatus] = useState<'all' | Post['status']>('all')
-  const [detailPost, setDetailPost] = useState<Post | null>(null)
+const PostsPage: React.FC = () => {
+  const { message } = App.useApp()
 
-  const filtered = useMemo(
-    () =>
-      posts.filter((post) => {
-        const matchKeyword =
-          post.title.toLowerCase().includes(keyword.toLowerCase()) ||
-          post.tags.some((t) => t.includes(keyword)) ||
-          post.author.toLowerCase().includes(keyword.toLowerCase())
-        const matchStatus = status === 'all' ? true : post.status === status
-        return matchKeyword && matchStatus
-      }),
-    [keyword, posts, status],
-  )
+  const [loading, setLoading] = useState(false)
+  const [posts, setPosts] = useState<Post[]>([])
+  const [keyword, setKeyword] = useState('')
+  const [filterType, setFilterType] = useState<'all' | 'pinned' | 'highlighted' | 'locked' | 'hidden'>('all')
+  const [detailPost, setDetailPost] = useState<Post | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [total, setTotal] = useState(0)
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
+
+  useEffect(() => {
+    fetchPosts()
+  }, [page, pageSize, filterType])
+
+  const fetchPosts = async () => {
+    try {
+      setLoading(true)
+      const response = await postService.getPosts({
+        page,
+        limit: pageSize,
+        isPinned: filterType === 'pinned' ? true : undefined,
+        isHighlighted: filterType === 'highlighted' ? true : undefined,
+        isHidden: filterType === 'hidden' ? true : undefined,
+        keyword: keyword || undefined,
+      })
+      setPosts(response.data)
+      setTotal(response.meta.total)
+    } catch (error: any) {
+      message.error(error.response?.data?.message || '获取帖子列表失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSearch = () => {
+    setPage(1)
+    fetchPosts()
+  }
+
+  const handleTogglePin = async (post: Post) => {
+    try {
+      if (post.isPinned) {
+        await postService.unpinPost(post.id)
+        message.success('已取消置顶')
+      } else {
+        await postService.pinPost(post.id)
+        message.success('已置顶')
+      }
+      fetchPosts()
+    } catch (error: any) {
+      message.error(error.response?.data?.message || '操作失败')
+    }
+  }
+
+  const handleToggleHighlight = async (post: Post) => {
+    try {
+      if (post.isHighlighted) {
+        await postService.unhighlightPost(post.id)
+        message.success('已取消精华')
+      } else {
+        await postService.highlightPost(post.id)
+        message.success('已加精')
+      }
+      fetchPosts()
+    } catch (error: any) {
+      message.error(error.response?.data?.message || '操作失败')
+    }
+  }
+
+  const handleToggleLock = async (post: Post) => {
+    try {
+      if (post.isLocked) {
+        await postService.unlockPost(post.id)
+        message.success('已解锁，允许评论')
+      } else {
+        await postService.lockPost(post.id)
+        message.success('已锁定，禁止评论')
+      }
+      fetchPosts()
+    } catch (error: any) {
+      message.error(error.response?.data?.message || '操作失败')
+    }
+  }
+
+  const handleToggleHidden = async (post: Post) => {
+    try {
+      if (post.isHidden) {
+        await postService.unhidePost(post.id)
+        message.success('已取消隐藏')
+      } else {
+        await postService.hidePost(post.id)
+        message.success('已隐藏')
+      }
+      fetchPosts()
+    } catch (error: any) {
+      message.error(error.response?.data?.message || '操作失败')
+    }
+  }
 
   const handleDelete = (postId: string) => {
     Modal.confirm({
       title: '确认删除该帖子？',
-      content: '删除后将从数据库物理删除，并同步隐藏其评论。',
+      content: '删除后将从数据库物理删除，此操作不可恢复。',
       okButtonProps: { danger: true },
-      onOk: () => {
-        onDelete(postId)
-        message.success('帖子已删除')
+      onOk: async () => {
+        try {
+          await postService.bulkDelete([postId])
+          message.success('帖子已删除')
+          fetchPosts()
+        } catch (error: any) {
+          message.error(error.response?.data?.message || '删除失败')
+        }
       },
     })
   }
 
-  const renderStatus = (state: Post['status']) => {
-    if (state === 'pinned') return <Tag color="gold">置顶</Tag>
-    if (state === 'hidden') return <Tag color="red">隐藏</Tag>
-    return <Tag color="blue">正常</Tag>
+  const handleBulkDelete = () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要删除的帖子')
+      return
+    }
+
+    Modal.confirm({
+      title: `确认删除选中的 ${selectedRowKeys.length} 个帖子？`,
+      content: '批量删除后将从数据库物理删除，此操作不可恢复。',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await postService.bulkDelete(selectedRowKeys)
+          message.success(`已删除 ${selectedRowKeys.length} 个帖子`)
+          setSelectedRowKeys([])
+          fetchPosts()
+        } catch (error: any) {
+          message.error(error.response?.data?.message || '批量删除失败')
+        }
+      },
+    })
+  }
+
+  const filtered = useMemo(() => {
+    if (!keyword) return posts
+    return posts.filter((post) => {
+      const lowerKeyword = keyword.toLowerCase()
+      return (
+        post.title.toLowerCase().includes(lowerKeyword) ||
+        post.author.username.toLowerCase().includes(lowerKeyword) ||
+        post.author.nickname.toLowerCase().includes(lowerKeyword)
+      )
+    })
+  }, [keyword, posts])
+
+  const renderStatusTags = (post: Post) => {
+    const tags = []
+    if (post.isPinned) tags.push(<Tag key="pin" color="gold">置顶</Tag>)
+    if (post.isHighlighted) tags.push(<Tag key="highlight" color="orange">精华</Tag>)
+    if (post.isLocked) tags.push(<Tag key="lock" color="volcano">锁定</Tag>)
+    if (post.isHidden) tags.push(<Tag key="hidden" color="red">隐藏</Tag>)
+    if (tags.length === 0) tags.push(<Tag key="normal" color="blue">正常</Tag>)
+    return <Space size={4}>{tags}</Space>
   }
 
   const columns: ColumnsType<Post> = [
     {
       title: '帖子',
       dataIndex: 'title',
+      width: 300,
       render: (_, record) => (
         <div>
           <div className="font-semibold text-slate-900">{record.title}</div>
-          <Space wrap className="mt-1">
-            {record.tags.map((t) => (
-              <Tag key={t}>{t}</Tag>
-            ))}
-          </Space>
+          <div className="text-xs text-slate-500 mt-1">ID: {record.id.slice(0, 8)}...</div>
         </div>
       ),
     },
     {
       title: '作者',
       dataIndex: 'author',
+      render: (author: Post['author']) => (
+        <Space align="center">
+          <Avatar size={32} src={author.avatar} />
+          <div>
+            <div className="font-medium text-slate-900">{author.nickname || author.username}</div>
+            <div className="text-xs text-slate-500">@{author.username}</div>
+          </div>
+        </Space>
+      ),
     },
     {
-      title: '分类',
-      dataIndex: 'category',
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-    },
-    {
-      title: '浏览/评论',
+      title: '数据',
       render: (_, record) => (
-        <Space>
+        <Space size={8}>
           <Tag color="blue" bordered={false}>
-            浏览 {record.views}
+            浏览 {record.viewCount}
           </Tag>
           <Tag color="geekblue" bordered={false}>
-            评论 {record.comments}
+            评论 {record.commentCount}
+          </Tag>
+          <Tag color="cyan" bordered={false}>
+            点赞 {record.likeCount}
           </Tag>
         </Space>
       ),
     },
     {
-      title: '热度',
-      dataIndex: 'heat',
-      sorter: (a, b) => a.heat - b.heat,
+      title: '创建时间',
+      dataIndex: 'createdAt',
+      width: 120,
+      render: (date: string) => new Date(date).toLocaleDateString('zh-CN'),
     },
     {
       title: '状态',
       dataIndex: 'status',
-      render: renderStatus,
+      render: (_, record) => renderStatusTags(record),
     },
     {
       title: '操作',
       dataIndex: 'actions',
-      width: 260,
+      width: 320,
+      fixed: 'right',
       render: (_, record) => (
-        <Space>
-          <Button icon={<EyeOutlined />} type="link" onClick={() => setDetailPost(record)}>
+        <Space wrap>
+          <Button size="small" icon={<EyeOutlined />} type="link" onClick={() => setDetailPost(record)}>
             详情
           </Button>
           <Button
+            size="small"
             icon={<PushpinOutlined />}
             type="link"
-            onClick={() => {
-              onTogglePin(record.id)
-              message.success(record.status === 'pinned' ? '已取消置顶' : '已置顶')
-            }}
+            onClick={() => handleTogglePin(record)}
           >
-            {record.status === 'pinned' ? '取消置顶' : '置顶'}
+            {record.isPinned ? '取消置顶' : '置顶'}
           </Button>
           <Button
-            icon={record.status === 'hidden' ? <HighlightOutlined /> : <StopOutlined />}
+            size="small"
+            icon={<HighlightOutlined />}
             type="link"
-            onClick={() => {
-              onToggleHidden(record.id)
-              message.success(record.status === 'hidden' ? '已取消隐藏' : '已隐藏')
-            }}
+            onClick={() => handleToggleHighlight(record)}
           >
-            {record.status === 'hidden' ? '取消隐藏' : '隐藏'}
+            {record.isHighlighted ? '取消精华' : '加精'}
           </Button>
           <Button
+            size="small"
+            icon={record.isLocked ? <UnlockOutlined /> : <LockOutlined />}
+            type="link"
+            onClick={() => handleToggleLock(record)}
+          >
+            {record.isLocked ? '解锁' : '锁定'}
+          </Button>
+          <Button
+            size="small"
+            icon={<StopOutlined />}
+            type="link"
+            onClick={() => handleToggleHidden(record)}
+          >
+            {record.isHidden ? '取消隐藏' : '隐藏'}
+          </Button>
+          <Button
+            size="small"
             icon={<DeleteOutlined />}
             danger
             type="link"
@@ -167,60 +305,114 @@ const PostsPage: React.FC<PostsPageProps> = ({
     <div className="space-y-4">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
-          <Typography.Title level={3} className="!mb-1 text-slate-900">
+          <Typography.Title level={3} className="mb-1! text-slate-900">
             帖子管理
           </Typography.Title>
-          <Typography.Paragraph className="!mb-0 text-slate-600">
-            可按作者、标签、状态筛选，支持置顶、隐藏、物理删除。
+          <Typography.Paragraph className="mb-0! text-slate-600">
+            可按作者、标签、状态筛选，支持置顶、加精、锁定、隐藏、物理删除。
           </Typography.Paragraph>
         </div>
         <Space>
-          <Input.Search
-            allowClear
-            placeholder="搜索标题 / 作者 / 标签"
-            onSearch={setKeyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            className="min-w-[260px]"
-          />
-          <Select value={status} onChange={(v) => setStatus(v)} style={{ width: 140 }}>
-            <Option value="all">全部状态</Option>
-            <Option value="normal">正常</Option>
-            <Option value="pinned">置顶</Option>
-            <Option value="hidden">隐藏</Option>
-          </Select>
+          <Button icon={<ReloadOutlined />} onClick={fetchPosts}>
+            刷新
+          </Button>
+          {selectedRowKeys.length > 0 && (
+            <Button danger icon={<DeleteOutlined />} onClick={handleBulkDelete}>
+              批量删除 ({selectedRowKeys.length})
+            </Button>
+          )}
         </Space>
       </div>
 
-      <Table
-        columns={columns}
-        dataSource={filtered}
-        rowKey="id"
-        pagination={{ pageSize: 6 }}
-        className="bg-white/80 rounded-2xl shadow-soft"
-      />
+      <div className="flex gap-3">
+        <Input.Search
+          allowClear
+          placeholder="搜索标题 / 作者"
+          value={keyword}
+          onSearch={handleSearch}
+          onChange={(e) => setKeyword(e.target.value)}
+          className="flex-1"
+        />
+        <Select value={filterType} onChange={(v) => {
+          setFilterType(v)
+          setPage(1)
+        }} style={{ width: 140 }}>
+          <Option value="all">全部状态</Option>
+          <Option value="pinned">置顶</Option>
+          <Option value="highlighted">精华</Option>
+          <Option value="locked">锁定</Option>
+          <Option value="hidden">隐藏</Option>
+        </Select>
+      </div>
+
+      <Spin spinning={loading}>
+        <Table
+          columns={columns}
+          dataSource={filtered}
+          rowKey="id"
+          bordered={false}
+          scroll={{ x: 1200 }}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys as string[]),
+          }}
+          pagination={{
+            current: page,
+            pageSize: pageSize,
+            total: keyword ? filtered.length : total,
+            showSizeChanger: true,
+            showTotal: (total) => `共 ${total} 条`,
+            onChange: (page, pageSize) => {
+              setPage(page)
+              setPageSize(pageSize)
+            },
+          }}
+          className="bg-white/80 rounded-2xl shadow-soft"
+        />
+      </Spin>
 
       <Drawer
         open={!!detailPost}
-        width={520}
-        title={detailPost?.title}
+        width={600}
+        title="帖子详情"
         onClose={() => setDetailPost(null)}
       >
         {detailPost && (
-          <Space direction="vertical" size={12} className="text-slate-700">
-            <div>作者：{detailPost.author}</div>
-            <div>分类：{detailPost.category}</div>
-            <div>创建时间：{detailPost.createdAt}</div>
-            <div>状态：{renderStatus(detailPost.status)}</div>
-            <div>标签：{detailPost.tags.join('，')}</div>
-            <div>摘要：{detailPost.summary}</div>
-            <Space>
-              <Tag color="blue" bordered={false}>
-                浏览 {detailPost.views}
-              </Tag>
-              <Tag color="geekblue" bordered={false}>
-                评论 {detailPost.comments}
-              </Tag>
-            </Space>
+          <Space direction="vertical" size={16} className="w-full">
+            <div>
+              <div className="text-sm text-slate-500 mb-1">标题</div>
+              <div className="font-semibold text-lg text-slate-900">{detailPost.title}</div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500 mb-1">作者</div>
+              <Space align="center">
+                <Avatar src={detailPost.author.avatar} />
+                <div>
+                  <div className="font-medium">{detailPost.author.nickname || detailPost.author.username}</div>
+                  <div className="text-xs text-slate-500">@{detailPost.author.username}</div>
+                </div>
+              </Space>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500 mb-1">状态</div>
+              {renderStatusTags(detailPost)}
+            </div>
+            <div>
+              <div className="text-sm text-slate-500 mb-1">数据统计</div>
+              <Space>
+                <Tag color="blue" bordered={false}>浏览 {detailPost.viewCount}</Tag>
+                <Tag color="geekblue" bordered={false}>评论 {detailPost.commentCount}</Tag>
+                <Tag color="cyan" bordered={false}>点赞 {detailPost.likeCount}</Tag>
+              </Space>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500 mb-1">创建时间</div>
+              <div>{new Date(detailPost.createdAt).toLocaleString('zh-CN')}</div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500 mb-1">帖子ID</div>
+              <div className="text-xs font-mono text-slate-600">{detailPost.id}</div>
+            </div>
           </Space>
         )}
       </Drawer>

@@ -47,9 +47,17 @@ const navItems: MenuProps['items'] = [
 
 interface AdminLayoutProps {
   onLogout: () => void
+  currentUser: {
+    id: string
+    username: string
+    email: string
+    nickname: string
+    avatar: string
+    role: string
+  } | null
 }
 
-const AdminLayout: React.FC<AdminLayoutProps> = ({ onLogout }) => {
+const AdminLayout: React.FC<AdminLayoutProps> = ({ onLogout, currentUser }) => {
   const [collapsed, setCollapsed] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
@@ -95,11 +103,11 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ onLogout }) => {
         trigger={null}
         collapsed={collapsed}
         width={240}
-        className="!bg-white border-r border-slate-200/60"
+        className="bg-white! border-r border-slate-200/60"
         style={{ position: 'fixed', left: 0, top: 0, bottom: 0, height: '100vh', zIndex: 30 }}
       >
         <div className="flex items-center h-16 px-4 gap-3 text-slate-800 font-semibold tracking-tight border-b border-slate-200/60">
-          <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-lg text-white shadow-md">
+          <div className="h-10 w-10 rounded-2xl bg-linear-to-br from-blue-500 to-blue-600 flex items-center justify-center text-lg text-white shadow-md">
             SF
           </div>
           {!collapsed && (
@@ -117,7 +125,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ onLogout }) => {
           selectedKeys={[selectedKey]}
           items={navItems}
           onClick={({ key }) => navigate(String(key))}
-          className="!bg-transparent !border-0 mt-4"
+          className="bg-transparent! border-0! mt-4"
         />
         {!collapsed && (
           <div className="px-4 pt-6">
@@ -156,7 +164,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ onLogout }) => {
         }}
       >
         <Header
-          className="sticky top-0 z-20 bg-white backdrop-blur-sm border-b border-slate-200/80 shadow-sm"
+          className="sticky top-0 z-20 bg-white! backdrop-blur-sm border-b border-slate-200/80 shadow-sm"
           style={{ height: headerHeight, lineHeight: `${headerHeight}px`, padding: 0 }}
         >
           <div className="w-full flex items-center justify-between gap-4 pl-4 pr-6 h-full">
@@ -171,10 +179,10 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ onLogout }) => {
                 发布公告
               </Button>
               <Space size={10} className="pl-4 border-l border-slate-200">
-                <Avatar src="https://api.dicebear.com/7.x/identicon/svg?seed=admin" />
+                <Avatar src={currentUser?.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=admin'} />
                 <div className="leading-tight">
-                  <div className="font-semibold text-slate-900">Admin</div>
-                  <div className="text-xs text-slate-500">超级管理员</div>
+                  <div className="font-semibold text-slate-900">{currentUser?.nickname || currentUser?.username || 'Admin'}</div>
+                  <div className="text-xs text-slate-500">{currentUser?.role === 'ADMIN' ? '超级管理员' : '管理员'}</div>
                 </div>
                 <Tooltip title="退出登录">
                   <Button
