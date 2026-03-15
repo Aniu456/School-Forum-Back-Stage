@@ -3,7 +3,7 @@ import type { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axio
 import type { ApiResponse } from '../types'
 
 // Base URL from environment or default to localhost
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:30000'
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
 
 // Create axios instance
 const api = axios.create({

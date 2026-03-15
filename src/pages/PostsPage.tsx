@@ -22,10 +22,12 @@ import {
   Typography,
   App,
   Spin,
+  Tabs,
 } from 'antd'
-import { useEffect, useMemo, useState } from 'react'
-import type { Post } from '../types'
-import { postService } from '../services'
+import { useEffect, useState, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import type { Comment, Post } from '../types'
+import { postService, commentService } from '../services'
 
 const { Option } = Select
 
@@ -35,18 +37,26 @@ const PostsPage: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [posts, setPosts] = useState<Post[]>([])
   const [keyword, setKeyword] = useState('')
+  const [searchKeyword, setSearchKeyword] = useState('')
+  const [authorId, setAuthorId] = useState('')
+  const [tag, setTag] = useState('')
+  const [sortBy, setSortBy] = useState<'default' | 'createdAt' | 'hot'>('default')
   const [filterType, setFilterType] = useState<'all' | 'pinned' | 'highlighted' | 'locked' | 'hidden'>('all')
   const [detailPost, setDetailPost] = useState<Post | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [comments, setComments] = useState<Comment[]>([])
+  const [commentLoading, setCommentLoading] = useState(false)
+  const [commentPage, setCommentPage] = useState(1)
+  const [commentPageSize, setCommentPageSize] = useState(20)
+  const [commentTotal, setCommentTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [total, setTotal] = useState(0)
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
+  const [postId, setPostId] = useState('')
+  const [searchParams] = useSearchParams()
 
-  useEffect(() => {
-    fetchPosts()
-  }, [page, pageSize, filterType])
-
-  const fetchPosts = async () => {
+  const fetchPosts = useCallback(async () => {
     try {
       setLoading(true)
       const response = await postService.getPosts({
@@ -55,7 +65,12 @@ const PostsPage: React.FC = () => {
         isPinned: filterType === 'pinned' ? true : undefined,
         isHighlighted: filterType === 'highlighted' ? true : undefined,
         isHidden: filterType === 'hidden' ? true : undefined,
-        keyword: keyword || undefined,
+        keyword: searchKeyword || undefined,
+        postId: postId || undefined,
+        authorId: authorId || undefined,
+        tag: tag || undefined,
+        sortBy: sortBy === 'default' ? undefined : sortBy,
+        order: sortBy === 'default' ? undefined : 'desc',
       })
       setPosts(response.data)
       setTotal(response.meta.total)
@@ -64,11 +79,33 @@ const PostsPage: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, pageSize, filterType, searchKeyword, postId, authorId, tag, sortBy, message])
+
+  useEffect(() => {
+    fetchPosts()
+  }, [fetchPosts])
+
+  useEffect(() => {
+    const pid = searchParams.get('postId')
+    if (pid) {
+      setPostId(pid)
+      setPage(1)
+    }
+  }, [searchParams])
 
   const handleSearch = () => {
+    setSearchKeyword(keyword)
     setPage(1)
-    fetchPosts()
+  }
+
+  const handleResetFilters = () => {
+    setKeyword('')
+    setSearchKeyword('')
+    setPostId('')
+    setAuthorId('')
+    setTag('')
+    setSortBy('default')
+    setPage(1)
   }
 
   const handleTogglePin = async (post: Post) => {
@@ -126,6 +163,9 @@ const PostsPage: React.FC = () => {
         message.success('已隐藏')
       }
       fetchPosts()
+      if (detailPost && detailPost.id === post.id) {
+        setDetailPost({ ...detailPost, isHidden: !post.isHidden })
+      }
     } catch (error: any) {
       message.error(error.response?.data?.message || '操作失败')
     }
@@ -171,17 +211,57 @@ const PostsPage: React.FC = () => {
     })
   }
 
-  const filtered = useMemo(() => {
-    if (!keyword) return posts
-    return posts.filter((post) => {
-      const lowerKeyword = keyword.toLowerCase()
-      return (
-        post.title.toLowerCase().includes(lowerKeyword) ||
-        post.author.username.toLowerCase().includes(lowerKeyword) ||
-        post.author.nickname.toLowerCase().includes(lowerKeyword)
-      )
+  const handleOpenDetail = async (post: Post) => {
+    setDetailPost(post)
+    setCommentPage(1)
+    setDetailLoading(true)
+    try {
+      const fullPost = await postService.getPost(post.id)
+      setDetailPost({ ...post, ...fullPost })
+      await fetchPostComments(post.id, 1, commentPageSize)
+    } catch (error: any) {
+      message.error(error.response?.data?.message || '获取帖子详情失败')
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  const fetchPostComments = useCallback(
+    async (postId: string, pageNum = commentPage, limit = commentPageSize) => {
+      try {
+        setCommentLoading(true)
+        const response = await commentService.getComments({
+          page: pageNum,
+          limit,
+          postId,
+        })
+        setComments(response.data)
+        setCommentTotal(response.meta.total)
+      } catch (error: any) {
+        message.error(error.response?.data?.message || '获取评论失败')
+      } finally {
+        setCommentLoading(false)
+      }
+    },
+    [commentPage, commentPageSize, message]
+  )
+
+  const handleDeleteComment = (commentId: string, postId: string) => {
+    Modal.confirm({
+      title: '确认删除该评论？',
+      content: '删除后将从数据库物理删除，此操作不可恢复。',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await commentService.deleteComment(commentId)
+          message.success('评论已删除')
+          await fetchPostComments(postId, commentPage, commentPageSize)
+        } catch (error: any) {
+          message.error(error.response?.data?.message || '删除失败')
+        }
+      },
     })
-  }, [keyword, posts])
+  }
 
   const renderStatusTags = (post: Post) => {
     const tags = []
@@ -252,7 +332,7 @@ const PostsPage: React.FC = () => {
       fixed: 'right',
       render: (_, record) => (
         <Space wrap>
-          <Button size="small" icon={<EyeOutlined />} type="link" onClick={() => setDetailPost(record)}>
+          <Button size="small" icon={<EyeOutlined />} type="link" onClick={() => handleOpenDetail(record)}>
             详情
           </Button>
           <Button
@@ -324,31 +404,78 @@ const PostsPage: React.FC = () => {
         </Space>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex flex-col gap-3">
         <Input.Search
           allowClear
           placeholder="搜索标题 / 作者"
           value={keyword}
           onSearch={handleSearch}
-          onChange={(e) => setKeyword(e.target.value)}
+          onChange={(e) => {
+            setKeyword(e.target.value)
+            if (!e.target.value) {
+              setSearchKeyword('')
+              setPage(1)
+            }
+          }}
           className="flex-1"
         />
-        <Select value={filterType} onChange={(v) => {
-          setFilterType(v)
-          setPage(1)
-        }} style={{ width: 140 }}>
-          <Option value="all">全部状态</Option>
-          <Option value="pinned">置顶</Option>
-          <Option value="highlighted">精华</Option>
-          <Option value="locked">锁定</Option>
-          <Option value="hidden">隐藏</Option>
-        </Select>
+        <Space wrap>
+          <Select value={filterType} onChange={(v) => {
+            setFilterType(v)
+            setPage(1)
+          }} style={{ width: 140 }}>
+            <Option value="all">全部状态</Option>
+            <Option value="pinned">置顶</Option>
+            <Option value="highlighted">精华</Option>
+            <Option value="locked">锁定</Option>
+            <Option value="hidden">隐藏</Option>
+          </Select>
+          <Input
+            allowClear
+            placeholder="帖子ID"
+            value={postId}
+            onChange={(e) => {
+              setPostId(e.target.value)
+              setPage(1)
+            }}
+            style={{ width: 180 }}
+          />
+          <Input
+            allowClear
+            placeholder="作者ID"
+            value={authorId}
+            onChange={(e) => {
+              setAuthorId(e.target.value)
+              setPage(1)
+            }}
+            style={{ width: 160 }}
+          />
+          <Input
+            allowClear
+            placeholder="标签"
+            value={tag}
+            onChange={(e) => {
+              setTag(e.target.value)
+              setPage(1)
+            }}
+            style={{ width: 140 }}
+          />
+          <Select value={sortBy} onChange={(v) => {
+            setSortBy(v)
+            setPage(1)
+          }} style={{ width: 160 }}>
+            <Option value="default">默认排序</Option>
+            <Option value="createdAt">按时间(最新)</Option>
+            <Option value="hot">按热度</Option>
+          </Select>
+          <Button onClick={handleResetFilters}>清空筛选</Button>
+        </Space>
       </div>
 
       <Spin spinning={loading}>
         <Table
           columns={columns}
-          dataSource={filtered}
+          dataSource={posts}
           rowKey="id"
           bordered={false}
           scroll={{ x: 1200 }}
@@ -359,7 +486,7 @@ const PostsPage: React.FC = () => {
           pagination={{
             current: page,
             pageSize: pageSize,
-            total: keyword ? filtered.length : total,
+            total,
             showSizeChanger: true,
             showTotal: (total) => `共 ${total} 条`,
             onChange: (page, pageSize) => {
@@ -378,42 +505,185 @@ const PostsPage: React.FC = () => {
         onClose={() => setDetailPost(null)}
       >
         {detailPost && (
-          <Space direction="vertical" size={16} className="w-full">
-            <div>
-              <div className="text-sm text-slate-500 mb-1">标题</div>
-              <div className="font-semibold text-lg text-slate-900">{detailPost.title}</div>
-            </div>
-            <div>
-              <div className="text-sm text-slate-500 mb-1">作者</div>
-              <Space align="center">
-                <Avatar src={detailPost.author.avatar} />
-                <div>
-                  <div className="font-medium">{detailPost.author.nickname || detailPost.author.username}</div>
-                  <div className="text-xs text-slate-500">@{detailPost.author.username}</div>
-                </div>
-              </Space>
-            </div>
-            <div>
-              <div className="text-sm text-slate-500 mb-1">状态</div>
-              {renderStatusTags(detailPost)}
-            </div>
-            <div>
-              <div className="text-sm text-slate-500 mb-1">数据统计</div>
-              <Space>
-                <Tag color="blue" bordered={false}>浏览 {detailPost.viewCount}</Tag>
-                <Tag color="geekblue" bordered={false}>评论 {detailPost.commentCount}</Tag>
-                <Tag color="cyan" bordered={false}>点赞 {detailPost.likeCount}</Tag>
-              </Space>
-            </div>
-            <div>
-              <div className="text-sm text-slate-500 mb-1">创建时间</div>
-              <div>{new Date(detailPost.createdAt).toLocaleString('zh-CN')}</div>
-            </div>
-            <div>
-              <div className="text-sm text-slate-500 mb-1">帖子ID</div>
-              <div className="text-xs font-mono text-slate-600">{detailPost.id}</div>
-            </div>
-          </Space>
+          <Tabs
+            items={[
+              {
+                key: 'basic',
+                label: '基本信息',
+                children: (
+                  <Spin spinning={detailLoading}>
+                    <Space direction="vertical" size={16} className="w-full">
+                      <div>
+                        <div className="text-sm text-slate-500 mb-1">标题</div>
+                        <div className="font-semibold text-lg text-slate-900">{detailPost.title}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-slate-500 mb-1">作者</div>
+                        <Space align="center">
+                          <Avatar src={detailPost.author.avatar} />
+                          <div>
+                            <div className="font-medium">{detailPost.author.nickname || detailPost.author.username}</div>
+                            <div className="text-xs text-slate-500">@{detailPost.author.username}</div>
+                          </div>
+                        </Space>
+                      </div>
+                      <div>
+                        <div className="text-sm text-slate-500 mb-1">状态</div>
+                        {renderStatusTags(detailPost)}
+                      </div>
+                      <div>
+                        <div className="text-sm text-slate-500 mb-1">标签</div>
+                        <Space size={4} wrap>
+                          {(detailPost.tags && detailPost.tags.length > 0)
+                            ? detailPost.tags.map((t) => (<Tag key={t}>{t}</Tag>))
+                            : <Tag>未设置</Tag>}
+                        </Space>
+                      </div>
+                      <div className="flex gap-2 flex-wrap">
+                        <Button
+                          size="small"
+                          onClick={() => handleTogglePin(detailPost)}
+                          icon={<PushpinOutlined />}
+                        >
+                          {detailPost.isPinned ? '取消置顶' : '置顶'}
+                        </Button>
+                        <Button
+                          size="small"
+                          onClick={() => handleToggleHighlight(detailPost)}
+                          icon={<HighlightOutlined />}
+                        >
+                          {detailPost.isHighlighted ? '取消精华' : '加精'}
+                        </Button>
+                        <Button
+                          size="small"
+                          onClick={() => handleToggleLock(detailPost)}
+                          icon={detailPost.isLocked ? <UnlockOutlined /> : <LockOutlined />}
+                        >
+                          {detailPost.isLocked ? '解锁' : '锁定'}
+                        </Button>
+                        <Button
+                          size="small"
+                          danger={detailPost.isHidden}
+                          onClick={() => handleToggleHidden(detailPost)}
+                          icon={<StopOutlined />}
+                        >
+                          {detailPost.isHidden ? '取消隐藏' : '隐藏'}
+                        </Button>
+                        <Button
+                          size="small"
+                          danger
+                          onClick={() => handleDelete(detailPost.id)}
+                          icon={<DeleteOutlined />}
+                        >
+                          删除
+                        </Button>
+                      </div>
+                      <div>
+                        <div className="text-sm text-slate-500 mb-1">数据统计</div>
+                        <Space>
+                          <Tag color="blue" bordered={false}>浏览 {detailPost.viewCount}</Tag>
+                          <Tag color="geekblue" bordered={false}>评论 {detailPost.commentCount}</Tag>
+                          <Tag color="cyan" bordered={false}>点赞 {detailPost.likeCount}</Tag>
+                        </Space>
+                      </div>
+                      <div>
+                        <div className="text-sm text-slate-500 mb-1">正文</div>
+                        <div
+                          className="text-slate-800 whitespace-pre-wrap leading-7 max-h-[260px] overflow-auto"
+                          dangerouslySetInnerHTML={{ __html: detailPost.content || '暂无正文' }}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <div className="text-sm text-slate-500 mb-1">创建时间</div>
+                          <div>{new Date(detailPost.createdAt).toLocaleString('zh-CN')}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-slate-500 mb-1">更新时间</div>
+                          <div>{detailPost.updatedAt ? new Date(detailPost.updatedAt).toLocaleString('zh-CN') : '暂无'}</div>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-slate-500 mb-1">帖子ID</div>
+                        <div className="text-xs font-mono text-slate-600">{detailPost.id}</div>
+                      </div>
+                    </Space>
+                  </Spin>
+                ),
+              },
+              {
+                key: 'comments',
+                label: '评论',
+                children: (
+                  <Spin spinning={commentLoading}>
+                    <Table
+                      rowKey="id"
+                      dataSource={comments}
+                      pagination={{
+                        current: commentPage,
+                        pageSize: commentPageSize,
+                        total: commentTotal,
+                        showSizeChanger: true,
+                        showTotal: (total) => `共 ${total} 条`,
+                        onChange: (p, size) => {
+                          setCommentPage(p)
+                          setCommentPageSize(size)
+                          if (detailPost) {
+                            fetchPostComments(detailPost.id, p, size)
+                          }
+                        },
+                      }}
+                      columns={[
+                        {
+                          title: '内容',
+                          dataIndex: 'content',
+                          width: 260,
+                          render: (text: string) => <span className="text-slate-900">{text}</span>,
+                        },
+                        {
+                          title: '作者',
+                          dataIndex: 'author',
+                          render: (author: Comment['author']) => (
+                            <Space align="center">
+                              <Avatar size={28} src={author.avatar} />
+                              <div>
+                                <div className="text-sm text-slate-900">{author.nickname || author.username}</div>
+                                <div className="text-xs text-slate-500">@{author.username}</div>
+                              </div>
+                            </Space>
+                          ),
+                        },
+                        {
+                          title: '点赞',
+                          dataIndex: 'likeCount',
+                          render: (count: number) => <Tag color="blue" bordered={false}>{count}</Tag>,
+                        },
+                        {
+                          title: '时间',
+                          dataIndex: 'createdAt',
+                          render: (date: string) => new Date(date).toLocaleString('zh-CN'),
+                        },
+                        {
+                          title: '操作',
+                          dataIndex: 'actions',
+                          width: 120,
+                          render: (_, record) => (
+                            <Button
+                              type="link"
+                              danger
+                              onClick={() => detailPost && handleDeleteComment(record.id, detailPost.id)}
+                            >
+                              删除
+                            </Button>
+                          ),
+                        },
+                      ]}
+                    />
+                  </Spin>
+                ),
+              },
+            ]}
+          />
         )}
       </Drawer>
     </div>

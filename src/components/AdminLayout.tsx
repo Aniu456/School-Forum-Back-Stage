@@ -12,8 +12,10 @@ import {
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { Avatar, Badge, Breadcrumb, Button, Layout, Menu, Space, Tag, Tooltip } from 'antd'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { statisticsService } from '../services'
+import type { SystemStatistics } from '../types'
 
 const { Header, Sider, Content } = Layout
 
@@ -59,9 +61,14 @@ interface AdminLayoutProps {
 
 const AdminLayout: React.FC<AdminLayoutProps> = ({ onLogout, currentUser }) => {
   const [collapsed, setCollapsed] = useState(false)
+  const [statistics, setStatistics] = useState<SystemStatistics | null>(null)
   const navigate = useNavigate()
   const location = useLocation()
   const selectedKey = location.pathname === '/' ? '/overview' : location.pathname
+
+  useEffect(() => {
+    statisticsService.getStatistics().then(setStatistics).catch(() => {})
+  }, [])
 
   const siderWidth = collapsed ? 80 : 240
   const headerHeight = 72
@@ -127,7 +134,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ onLogout, currentUser }) => {
           onClick={({ key }) => navigate(String(key))}
           className="bg-transparent! border-0! mt-4"
         />
-        {!collapsed && (
+        {!collapsed && statistics && (
           <div className="px-4 pt-6">
             <div className="rounded-2xl bg-blue-50/80 border border-blue-200/50 p-3">
               <div className="flex items-center justify-between mb-2 text-xs uppercase tracking-wide text-slate-600">
@@ -136,8 +143,11 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ onLogout, currentUser }) => {
                   正常
                 </Tag>
               </div>
-              <div className="text-sm leading-6 text-slate-700">
-                今日执行 128 条内容审核，0 条失败。
+              <div className="text-sm leading-6 text-slate-700 space-y-0.5">
+                <div>用户总数：<span className="font-semibold text-blue-600">{statistics.users.total}</span></div>
+                <div>封禁用户：<span className="font-semibold text-red-500">{statistics.users.banned}</span></div>
+                <div>帖子总数：<span className="font-semibold text-sky-600">{statistics.posts.total}</span></div>
+                <div>评论总数：<span className="font-semibold text-teal-600">{statistics.comments.total}</span></div>
               </div>
             </div>
           </div>
@@ -171,8 +181,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ onLogout, currentUser }) => {
             <Breadcrumb items={getBreadcrumbs()} />
             <div className="flex items-center gap-3">
               <Tooltip title="消息提醒">
-                <Badge count={6} size="small" offset={[-2, 6]}>
-                  <Button shape="circle" icon={<BellOutlined />} />
+                <Badge dot={statistics ? statistics.users.banned > 0 : false} offset={[-2, 6]}>
+                  <Button shape="circle" icon={<BellOutlined />} onClick={() => navigate('/users')} />
                 </Badge>
               </Tooltip>
               <Button type="primary" ghost onClick={() => navigate('/announcements')}>

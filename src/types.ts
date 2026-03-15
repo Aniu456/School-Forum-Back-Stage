@@ -35,6 +35,11 @@ export interface User {
   role: UserRole
   isActive: boolean
   isBanned: boolean
+  canPost?: boolean
+  canComment?: boolean
+  bio?: string
+  website?: string
+  lastLoginAt?: string
   followerCount: number
   followingCount: number
   createdAt: string
@@ -47,6 +52,19 @@ export interface UserListParams {
   limit?: number
   role?: UserRole
   isBanned?: boolean
+  keyword?: string
+}
+
+export interface UserLoginHistory {
+  id: string
+  userId?: string
+  loginIp?: string
+  loginTime?: string
+  userAgent?: string
+  device?: string
+  location?: string
+  ipAddress?: string
+  createdAt?: string
 }
 
 // Post types
@@ -55,6 +73,7 @@ export type PostStatus = 'normal' | 'pinned' | 'hidden'
 export interface Post {
   id: string
   title: string
+  content?: string
   author: {
     id: string
     username: string
@@ -69,6 +88,8 @@ export interface Post {
   isLocked: boolean
   isHidden: boolean
   createdAt: string
+  updatedAt?: string
+  tags?: string[]
 }
 
 export interface PostListParams {
@@ -78,8 +99,11 @@ export interface PostListParams {
   isHighlighted?: boolean
   isHidden?: boolean
   keyword?: string
+  postId?: string
   authorId?: string
   tag?: string
+  sortBy?: 'createdAt' | 'hot'
+  order?: 'asc' | 'desc'
 }
 
 // Comment types
@@ -89,6 +113,10 @@ export interface Comment {
   id: string
   postId: string
   postTitle?: string
+  post?: {
+    id: string
+    title: string
+  }
   author: {
     id: string
     username: string
@@ -121,6 +149,8 @@ export interface Announcement {
   targetRole: AnnouncementTargetRole
   isPinned: boolean
   isHidden?: boolean
+  isPublished?: boolean
+  publishedAt?: string
   createdAt: string
   updatedAt?: string
   author?: {
@@ -138,6 +168,7 @@ export interface AnnouncementInput {
   targetRole?: AnnouncementTargetRole
   isPinned?: boolean
   isPublished?: boolean
+  isHidden?: boolean
 }
 
 // Statistics

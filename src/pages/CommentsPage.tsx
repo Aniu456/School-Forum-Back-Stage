@@ -13,33 +13,38 @@ import {
   App,
   Spin,
 } from 'antd'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import DOMPurify from 'dompurify'
 import type { Comment } from '../types'
 import { commentService } from '../services'
 
 const CommentsPage: React.FC = () => {
   const { message } = App.useApp()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const [loading, setLoading] = useState(false)
   const [comments, setComments] = useState<Comment[]>([])
   const [keyword, setKeyword] = useState('')
+  const [searchKeyword, setSearchKeyword] = useState('')
+  const [authorId, setAuthorId] = useState('')
+  const [postId, setPostId] = useState('')
   const [detail, setDetail] = useState<Comment | null>(null)
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [total, setTotal] = useState(0)
 
-  useEffect(() => {
-    fetchComments()
-  }, [page, pageSize])
-
-  const fetchComments = async () => {
+  const fetchComments = useCallback(async () => {
     try {
       setLoading(true)
       const response = await commentService.getComments({
         page,
         limit: pageSize,
-        keyword: keyword || undefined,
+        keyword: searchKeyword || undefined,
+        authorId: authorId || undefined,
+        postId: postId || undefined,
       })
       setComments(response.data)
       setTotal(response.meta.total)
@@ -48,11 +53,36 @@ const CommentsPage: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, pageSize, searchKeyword, authorId, postId, message])
+
+  useEffect(() => {
+    fetchComments()
+  }, [fetchComments])
+
+  useEffect(() => {
+    const pid = searchParams.get('postId')
+    if (pid) {
+      setPostId(pid)
+      setPage(1)
+    }
+    const aid = searchParams.get('authorId')
+    if (aid) {
+      setAuthorId(aid)
+      setPage(1)
+    }
+  }, [searchParams])
 
   const handleSearch = () => {
     setPage(1)
-    fetchComments()
+    setSearchKeyword(keyword)
+  }
+
+  const handleResetFilters = () => {
+    setKeyword('')
+    setSearchKeyword('')
+    setAuthorId('')
+    setPostId('')
+    setPage(1)
   }
 
   const handleDelete = (commentId: string) => {
@@ -95,19 +125,6 @@ const CommentsPage: React.FC = () => {
     })
   }
 
-  const filtered = useMemo(() => {
-    if (!keyword) return comments
-    return comments.filter((comment) => {
-      const lowerKeyword = keyword.toLowerCase()
-      return (
-        comment.content.toLowerCase().includes(lowerKeyword) ||
-        comment.author.username.toLowerCase().includes(lowerKeyword) ||
-        comment.author.nickname.toLowerCase().includes(lowerKeyword) ||
-        (comment.postTitle && comment.postTitle.toLowerCase().includes(lowerKeyword))
-      )
-    })
-  }, [keyword, comments])
-
   const columns: ColumnsType<Comment> = [
     {
       title: '评论内容',
@@ -115,7 +132,11 @@ const CommentsPage: React.FC = () => {
       width: 400,
       render: (content: string, record) => (
         <div>
-          <div className="text-slate-900">{content}</div>
+          {/* 🛡️ 使用 DOMPurify 净化 HTML，防止 XSS 攻击 */}
+          <div
+            className="text-slate-900 prose prose-sm max-w-none"
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(content) }}
+          />
           <div className="text-xs text-slate-500 mt-1">
             发表于 {new Date(record.createdAt).toLocaleString('zh-CN')}
           </div>
@@ -138,9 +159,22 @@ const CommentsPage: React.FC = () => {
     {
       title: '所属帖子',
       dataIndex: 'postTitle',
-      render: (title?: string) => (
-        <span className="text-blue-700">{title || '未知帖子'}</span>
-      ),
+      render: (_: string, record) => {
+        const title = record.postTitle || record.post?.title || record.postId || '未知帖子'
+        return (
+          <Button
+            type="link"
+            className="px-0"
+            onClick={() => {
+              if (record.postId) {
+                navigate(`/posts?postId=${record.postId}`)
+              }
+            }}
+          >
+            {title}
+          </Button>
+        )
+      },
     },
     {
       title: '点赞',
@@ -203,16 +237,43 @@ const CommentsPage: React.FC = () => {
           placeholder="搜索内容 / 作者 / 帖子"
           value={keyword}
           onSearch={handleSearch}
-          onChange={(e) => setKeyword(e.target.value)}
+          onChange={(e) => {
+            setKeyword(e.target.value)
+            if (!e.target.value) {
+              setSearchKeyword('')
+              setPage(1)
+            }
+          }}
           className="flex-1"
         />
+        <Input
+          allowClear
+          placeholder="作者ID"
+          value={authorId}
+          onChange={(e) => {
+            setAuthorId(e.target.value)
+            setPage(1)
+          }}
+          style={{ width: 160 }}
+        />
+        <Input
+          allowClear
+          placeholder="帖子ID"
+          value={postId}
+          onChange={(e) => {
+            setPostId(e.target.value)
+            setPage(1)
+          }}
+          style={{ width: 160 }}
+        />
+        <Button onClick={handleResetFilters}>清空筛选</Button>
       </div>
 
       <Spin spinning={loading}>
         <Table
           rowKey="id"
           columns={columns}
-          dataSource={filtered}
+          dataSource={comments}
           bordered={false}
           rowSelection={{
             selectedRowKeys,
@@ -221,7 +282,7 @@ const CommentsPage: React.FC = () => {
           pagination={{
             current: page,
             pageSize: pageSize,
-            total: keyword ? filtered.length : total,
+            total,
             showSizeChanger: true,
             showTotal: (total) => `共 ${total} 条`,
             onChange: (page, pageSize) => {
@@ -243,7 +304,10 @@ const CommentsPage: React.FC = () => {
           <Space direction="vertical" size={16} className="w-full">
             <div>
               <div className="text-sm text-slate-500 mb-1">评论内容</div>
-              <div className="text-slate-900">{detail.content}</div>
+              <div
+                className="text-slate-900"
+                dangerouslySetInnerHTML={{ __html: detail.content }}
+              />
             </div>
             <div>
               <div className="text-sm text-slate-500 mb-1">作者</div>

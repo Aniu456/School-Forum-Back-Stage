@@ -1,4 +1,6 @@
 import {
+  CheckCircleOutlined,
+  ClockCircleOutlined,
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
@@ -17,6 +19,7 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   Typography,
   App,
   Spin,
@@ -82,6 +85,7 @@ const AnnouncementsPage: React.FC = () => {
         type: record.type,
         targetRole: record.targetRole,
         isPinned: record.isPinned,
+        isPublished: record.isPublished ?? false,
       })
     } else {
       form.resetFields()
@@ -147,6 +151,7 @@ const AnnouncementsPage: React.FC = () => {
         type: values.type,
         targetRole: values.targetRole,
         isPinned: values.isPinned,
+        isPublished: values.isPublished,
       }
 
       if (editing) {
@@ -206,6 +211,21 @@ const AnnouncementsPage: React.FC = () => {
         <Tag color={role === 'ADMIN' ? 'gold' : role === 'USER' ? 'blue' : 'default'} bordered={false}>
           {role === 'ADMIN' ? '管理员' : role === 'USER' ? '用户' : '全部'}
         </Tag>
+      ),
+    },
+    {
+      title: '发布状态',
+      dataIndex: 'isPublished',
+      render: (isPublished: boolean | undefined) => (
+        <Tooltip title={isPublished ? '已发布，用户可见' : '草稿，用户不可见'}>
+          <Tag
+            color={isPublished ? 'green' : 'default'}
+            bordered={false}
+            icon={isPublished ? <CheckCircleOutlined /> : <ClockCircleOutlined />}
+          >
+            {isPublished ? '已发布' : '草稿'}
+          </Tag>
+        </Tooltip>
       ),
     },
     {
@@ -344,7 +364,7 @@ const AnnouncementsPage: React.FC = () => {
           </Space>
         }
       >
-        <Form form={form} layout="vertical" initialValues={{ type: 'INFO', isPinned: false }}>
+        <Form form={form} layout="vertical" initialValues={{ type: 'INFO', isPinned: false, isPublished: false }}>
           <Form.Item
             label="标题"
             name="title"
@@ -374,6 +394,17 @@ const AnnouncementsPage: React.FC = () => {
           </Form.Item>
           <Form.Item label="置顶" name="isPinned" valuePropName="checked">
             <Switch checkedChildren={<PushpinOutlined />} unCheckedChildren={<PushpinOutlined />} />
+          </Form.Item>
+          <Form.Item
+            label="立即发布"
+            name="isPublished"
+            valuePropName="checked"
+            extra="开启后公告立即对用户可见，并推送系统通知；关闭则保存为草稿。"
+          >
+            <Switch
+              checkedChildren={<CheckCircleOutlined />}
+              unCheckedChildren={<ClockCircleOutlined />}
+            />
           </Form.Item>
         </Form>
       </Drawer>

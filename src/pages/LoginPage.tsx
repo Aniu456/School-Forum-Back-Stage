@@ -1,22 +1,18 @@
-import { LockOutlined, SafetyOutlined, MailOutlined, UserOutlined } from '@ant-design/icons'
-import { Button, Card, Form, Input, List, Typography, Tabs, App } from 'antd'
-import { useState } from 'react'
-import { authService } from '../services'
+import { LockOutlined, MailOutlined, SafetyOutlined, UserOutlined } from "@ant-design/icons"
+import { App, Button, Card, Form, Input, List, Tabs, Typography } from "antd"
+import { useState } from "react"
+import { authService } from "../services"
 
 interface LoginPageProps {
   onLogin: (user: any) => void
 }
 
-const keyHints = [
-  '使用管理员密钥注册或登录',
-  '登录后可管理用户 / 帖子 / 评论 / 公告',
-  '所有删除操作为物理删除',
-]
+const keyHints = ["使用管理员密钥注册或登录", "登录后可管理用户 / 帖子 / 评论 / 公告", "所有删除操作为物理删除"]
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const { message } = App.useApp()
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'register' | 'login'>('register')
+  const [activeTab, setActiveTab] = useState<"register" | "login">("register")
 
   const handleRegister = async (values: {
     email: string
@@ -29,10 +25,10 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     try {
       const response = await authService.registerAdmin(values)
       authService.saveAuthData(response)
-      message.success('注册成功,欢迎进入后台管理端')
+      message.success("注册成功,欢迎进入后台管理端")
       onLogin(response.user)
     } catch (error: any) {
-      const errorMsg = error.response?.data?.message || '注册失败,请检查管理员密钥'
+      const errorMsg = error.response?.data?.message || "注册失败,请检查管理员密钥"
       message.error(errorMsg)
     } finally {
       setLoading(false)
@@ -45,16 +41,16 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       const response = await authService.login(values.email, values.password)
 
       // Check if user is admin
-      if (response.user.role !== 'ADMIN') {
-        message.error('只有管理员才能访问后台系统')
+      if (response.user.role !== "ADMIN") {
+        message.error("只有管理员才能访问后台系统")
         return
       }
 
       authService.saveAuthData(response)
-      message.success('登录成功,欢迎回来')
+      message.success("登录成功,欢迎回来")
       onLogin(response.user)
     } catch (error: any) {
-      const errorMsg = error.response?.data?.message || '登录失败,请检查邮箱和密码'
+      const errorMsg = error.response?.data?.message || "登录失败,请检查邮箱和密码"
       message.error(errorMsg)
     } finally {
       setLoading(false)
@@ -85,9 +81,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
               split={false}
               dataSource={keyHints}
               renderItem={(item) => (
-                <List.Item className="px-0! border-none! text-slate-600 font-medium">
-                  • {item}
-                </List.Item>
+                <List.Item className="px-0! border-none! text-slate-600 font-medium">• {item}</List.Item>
               )}
             />
           </Card>
@@ -96,19 +90,19 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         <Card className="border-0 shadow-soft rounded-2xl">
           <Tabs
             activeKey={activeTab}
-            onChange={(key) => setActiveTab(key as 'register' | 'login')}
+            onChange={(key) => setActiveTab(key as "register" | "login")}
             items={[
               {
-                key: 'register',
-                label: '注册管理员',
+                key: "register",
+                label: "注册管理员",
                 children: (
                   <Form layout="vertical" onFinish={handleRegister}>
                     <Form.Item
                       label="邮箱"
                       name="email"
                       rules={[
-                        { required: true, message: '请输入邮箱' },
-                        { type: 'email', message: '请输入有效的邮箱地址' },
+                        { required: true, message: "请输入邮箱" },
+                        { type: "email", message: "请输入有效的邮箱地址" },
                       ]}
                     >
                       <Input prefix={<MailOutlined />} placeholder="admin@campus.edu" size="large" />
@@ -118,8 +112,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                       label="用户名"
                       name="username"
                       rules={[
-                        { required: true, message: '请输入用户名' },
-                        { min: 3, max: 20, message: '用户名长度为3-20个字符' },
+                        { required: true, message: "请输入用户名" },
+                        { min: 3, max: 20, message: "用户名长度为3-20个字符" },
                       ]}
                     >
                       <Input prefix={<UserOutlined />} placeholder="admin" size="large" />
@@ -133,27 +127,19 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                       label="密码"
                       name="password"
                       rules={[
-                        { required: true, message: '请输入密码' },
-                        { min: 6, max: 20, message: '密码长度为6-20个字符' },
+                        { required: true, message: "请输入密码" },
+                        { min: 6, max: 20, message: "密码长度为6-20个字符" },
                       ]}
                     >
-                      <Input.Password
-                        prefix={<LockOutlined />}
-                        placeholder="设置密码"
-                        size="large"
-                      />
+                      <Input.Password prefix={<LockOutlined />} placeholder="设置密码" size="large" />
                     </Form.Item>
 
                     <Form.Item
                       label="管理员密钥"
                       name="adminKey"
-                      rules={[{ required: true, message: '请输入管理员密钥' }]}
+                      rules={[{ required: true, message: "请输入管理员密钥" }]}
                     >
-                      <Input.Password
-                        prefix={<SafetyOutlined />}
-                        placeholder="ADMIN_REGISTRATION_KEY"
-                        size="large"
-                      />
+                      <Input.Password prefix={<SafetyOutlined />} placeholder="ADMIN_REGISTRATION_KEY" size="large" />
                     </Form.Item>
 
                     <Button type="primary" htmlType="submit" block size="large" loading={loading}>
@@ -163,31 +149,23 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 ),
               },
               {
-                key: 'login',
-                label: '登录',
+                key: "login",
+                label: "登录",
                 children: (
                   <Form layout="vertical" onFinish={handleLogin}>
                     <Form.Item
                       label="邮箱"
                       name="email"
                       rules={[
-                        { required: true, message: '请输入邮箱' },
-                        { type: 'email', message: '请输入有效的邮箱地址' },
+                        { required: true, message: "请输入邮箱" },
+                        { type: "email", message: "请输入有效的邮箱地址" },
                       ]}
                     >
                       <Input prefix={<MailOutlined />} placeholder="admin@campus.edu" size="large" />
                     </Form.Item>
 
-                    <Form.Item
-                      label="密码"
-                      name="password"
-                      rules={[{ required: true, message: '请输入密码' }]}
-                    >
-                      <Input.Password
-                        prefix={<LockOutlined />}
-                        placeholder="输入密码"
-                        size="large"
-                      />
+                    <Form.Item label="密码" name="password" rules={[{ required: true, message: "请输入密码" }]}>
+                      <Input.Password prefix={<LockOutlined />} placeholder="输入密码" size="large" />
                     </Form.Item>
 
                     <Button type="primary" htmlType="submit" block size="large" loading={loading}>

@@ -1,5 +1,5 @@
 import api from './api'
-import type { ApiResponse, PaginatedResponse, User, UserListParams } from '../types'
+import type { ApiResponse, PaginatedResponse, User, UserListParams, UserLoginHistory } from '../types'
 
 export const userService = {
   /**
@@ -66,8 +66,8 @@ export const userService = {
   async getLoginHistory(
     userId: string,
     params?: { page?: number; limit?: number }
-  ): Promise<PaginatedResponse<any>> {
-    const response = await api.get<ApiResponse<PaginatedResponse<any>>>(
+  ): Promise<PaginatedResponse<UserLoginHistory>> {
+    const response = await api.get<ApiResponse<PaginatedResponse<UserLoginHistory>>>(
       `/admin/users/${userId}/login-history`,
       { params }
     )
@@ -77,16 +77,18 @@ export const userService = {
   /**
    * Toggle post permission
    * POST /admin/users/:id/toggle-post-permission
+   * Note: backend DTO requires both canPost and canComment fields
    */
-  async togglePostPermission(userId: string): Promise<void> {
-    await api.post(`/admin/users/${userId}/toggle-post-permission`)
+  async togglePostPermission(userId: string, canPost: boolean, canComment: boolean): Promise<void> {
+    await api.post(`/admin/users/${userId}/toggle-post-permission`, { canPost, canComment })
   },
 
   /**
    * Toggle comment permission
    * POST /admin/users/:id/toggle-comment-permission
+   * Note: backend DTO requires both canPost and canComment fields
    */
-  async toggleCommentPermission(userId: string): Promise<void> {
-    await api.post(`/admin/users/${userId}/toggle-comment-permission`)
+  async toggleCommentPermission(userId: string, canComment: boolean, canPost: boolean): Promise<void> {
+    await api.post(`/admin/users/${userId}/toggle-comment-permission`, { canPost, canComment })
   },
 }
