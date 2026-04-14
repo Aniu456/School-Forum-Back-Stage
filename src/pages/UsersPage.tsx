@@ -28,6 +28,7 @@ import {
 import { useEffect, useState, useCallback } from 'react'
 import type { PaginationMeta, User, UserLoginHistory } from '../types'
 import { userService } from '../services'
+import { getAvatarSrc } from '../utils/avatar'
 
 const { Option } = Select
 
@@ -222,7 +223,7 @@ const UsersPage: React.FC = () => {
       dataIndex: 'username',
       render: (_, record) => (
         <Space align="center">
-          <Avatar src={record.avatar} />
+          <Avatar src={getAvatarSrc(record.nickname || record.username, record.avatar)} />
           <div>
             <div className="font-semibold text-slate-900">{record.nickname || record.username}</div>
             <div className="text-xs text-slate-500 flex items-center gap-1">
@@ -393,7 +394,7 @@ const UsersPage: React.FC = () => {
                 children: (
                   <div className="space-y-4 text-slate-700">
                     <div className="flex items-center gap-3">
-                      <Avatar size={60} src={detailUser.avatar} />
+                      <Avatar size={60} src={getAvatarSrc(detailUser.nickname || detailUser.username, detailUser.avatar)} />
                       <div>
                         <div className="font-semibold text-lg text-slate-900">
                           {detailUser.nickname || detailUser.username}

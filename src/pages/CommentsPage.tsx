@@ -18,6 +18,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import DOMPurify from 'dompurify'
 import type { Comment } from '../types'
 import { commentService } from '../services'
+import { getAvatarSrc } from '../utils/avatar'
 
 const CommentsPage: React.FC = () => {
   const { message } = App.useApp()
@@ -148,7 +149,7 @@ const CommentsPage: React.FC = () => {
       dataIndex: 'author',
       render: (author: Comment['author']) => (
         <Space align="center">
-          <Avatar size={32} src={author.avatar} />
+          <Avatar size={32} src={getAvatarSrc(author.nickname || author.username, author.avatar)} />
           <div>
             <div className="font-medium text-slate-900">{author.nickname || author.username}</div>
             <div className="text-xs text-slate-500">@{author.username}</div>
@@ -312,7 +313,7 @@ const CommentsPage: React.FC = () => {
             <div>
               <div className="text-sm text-slate-500 mb-1">作者</div>
               <Space align="center">
-                <Avatar src={detail.author.avatar} />
+                <Avatar src={getAvatarSrc(detail.author.nickname || detail.author.username, detail.author.avatar)} />
                 <div>
                   <div className="font-medium">{detail.author.nickname || detail.author.username}</div>
                   <div className="text-xs text-slate-500">@{detail.author.username}</div>
